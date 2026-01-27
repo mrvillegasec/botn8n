@@ -1,28 +1,23 @@
 {
-  "name": "Telegram Bot - Bienvenida, Identificación y Menú",
+  "name": "Telegram Bot - Bienvenida Identificacion y Menu",
   "nodes": [
     {
       "parameters": {
         "updates": ["message"],
         "additionalFields": {}
       },
-      "id": "telegram-trigger",
+      "id": "d1a1b1c1-0001-4000-8000-000000000001",
       "name": "Telegram Trigger",
       "type": "n8n-nodes-base.telegramTrigger",
       "typeVersion": 1.1,
       "position": [220, 300],
-      "credentials": {
-        "telegramApi": {
-          "id": "TELEGRAM_CREDENTIAL_ID",
-          "name": "Telegram Bot API"
-        }
-      }
+      "webhookId": "telegram-bot-trigger-webhook"
     },
     {
       "parameters": {
-        "jsCode": "// Extraer datos del mensaje de Telegram\nconst msg = $input.first().json;\nconst chatId = msg.message?.chat?.id ?? msg.message?.from?.id ?? null;\nconst text = (msg.message?.text ?? '').trim();\nconst firstName = msg.message?.from?.first_name ?? '';\nconst lastName = msg.message?.from?.last_name ?? '';\n\nreturn [{\n  json: {\n    chatId,\n    text,\n    firstName,\n    lastName,\n    rawMessage: msg\n  }\n}];"
+        "jsCode": "const msg = $input.first().json;\nconst chatId = msg.message?.chat?.id ?? msg.message?.from?.id ?? null;\nconst text = (msg.message?.text ?? '').trim();\nconst firstName = msg.message?.from?.first_name ?? '';\nconst lastName = msg.message?.from?.last_name ?? '';\n\nreturn [{\n  json: {\n    chatId,\n    text,\n    firstName,\n    lastName\n  }\n}];"
       },
-      "id": "parse-message",
+      "id": "d1a1b1c1-0001-4000-8000-000000000002",
       "name": "Parsear Mensaje",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -30,28 +25,48 @@
     },
     {
       "parameters": {
-        "operation": "get",
-        "key": "={{ 'session_' + $json.chatId }}"
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-session-key",
+              "name": "sessionKey",
+              "value": "={{ 'session_' + $json.chatId }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-chatid",
+              "name": "chatId",
+              "value": "={{ $json.chatId }}",
+              "type": "number"
+            },
+            {
+              "id": "assign-text",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-firstname",
+              "name": "firstName",
+              "value": "={{ $json.firstName }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
       },
-      "id": "get-session",
-      "name": "Obtener Sesión",
-      "type": "n8n-nodes-base.redis",
-      "typeVersion": 1,
-      "position": [660, 300],
-      "credentials": {
-        "redis": {
-          "id": "REDIS_CREDENTIAL_ID",
-          "name": "Redis"
-        }
-      },
-      "notes": "Alternativa: usar n8n-nodes-base.set con Static Data, o una DB (MySQL/Postgres). Redis es ideal para sesiones con TTL."
+      "id": "d1a1b1c1-0001-4000-8000-000000000003",
+      "name": "Set Datos Mensaje",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [660, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Combina mensaje entrante con sesión existente\nconst input = $input.first().json;\nconst chatId = input.chatId ?? $('Parsear Mensaje').first().json.chatId;\nconst text = input.text ?? $('Parsear Mensaje').first().json.text;\nconst firstName = $('Parsear Mensaje').first().json.firstName;\n\nlet session = {};\ntry {\n  const raw = input.value ?? input.data ?? null;\n  if (raw && typeof raw === 'string') {\n    session = JSON.parse(raw);\n  } else if (raw && typeof raw === 'object') {\n    session = raw;\n  }\n} catch(e) {\n  session = {};\n}\n\n// Si no hay state o el usuario envía /start, reiniciar\nconst state = (text === '/start' || !session.state) ? 'NEW' : session.state;\n\nreturn [{\n  json: {\n    chatId,\n    text,\n    firstName,\n    state,\n    session\n  }\n}];"
+        "jsCode": "// Simula obtener sesion de almacenamiento.\n// REEMPLAZAR: con nodo Redis Get, MySQL, Postgres, o n8n Static Data.\n// Por ahora usa $getWorkflowStaticData('global') como almacen simple.\n\nconst staticData = $getWorkflowStaticData('global');\nconst chatId = $json.chatId;\nconst text = $json.text;\nconst firstName = $json.firstName;\nconst sessionKey = 'session_' + chatId;\n\nlet session = {};\ntry {\n  if (staticData[sessionKey]) {\n    session = typeof staticData[sessionKey] === 'string'\n      ? JSON.parse(staticData[sessionKey])\n      : staticData[sessionKey];\n  }\n} catch(e) {\n  session = {};\n}\n\nconst state = (text === '/start' || !session.state) ? 'NEW' : session.state;\n\nreturn [{\n  json: {\n    chatId,\n    text,\n    firstName,\n    state,\n    session\n  }\n}];"
       },
-      "id": "merge-session",
-      "name": "Preparar Estado",
+      "id": "d1a1b1c1-0001-4000-8000-000000000004",
+      "name": "Obtener y Preparar Sesion",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [880, 300]
@@ -59,10 +74,14 @@
     {
       "parameters": {
         "rules": {
-          "rules": [
+          "values": [
             {
-              "outputKey": "NEW",
               "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
                 "conditions": [
                   {
                     "leftValue": "={{ $json.state }}",
@@ -72,12 +91,19 @@
                       "operation": "equals"
                     }
                   }
-                ]
-              }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "NEW"
             },
             {
-              "outputKey": "AWAIT_ID",
               "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
                 "conditions": [
                   {
                     "leftValue": "={{ $json.state }}",
@@ -87,12 +113,19 @@
                       "operation": "equals"
                     }
                   }
-                ]
-              }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "AWAIT_ID"
             },
             {
-              "outputKey": "AWAIT_PUNTO",
               "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
                 "conditions": [
                   {
                     "leftValue": "={{ $json.state }}",
@@ -102,12 +135,19 @@
                       "operation": "equals"
                     }
                   }
-                ]
-              }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "AWAIT_PUNTO"
             },
             {
-              "outputKey": "MAIN_MENU",
               "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
                 "conditions": [
                   {
                     "leftValue": "={{ $json.state }}",
@@ -117,12 +157,19 @@
                       "operation": "equals"
                     }
                   }
-                ]
-              }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "MAIN_MENU"
             },
             {
-              "outputKey": "HUMAN",
               "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
                 "conditions": [
                   {
                     "leftValue": "={{ $json.state }}",
@@ -132,107 +179,111 @@
                       "operation": "equals"
                     }
                   }
-                ]
-              }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "HUMAN"
             }
-          ],
-          "fallbackOutput": "NEW"
+          ]
         },
-        "options": {}
+        "options": {
+          "fallbackOutput": "extra"
+        }
       },
-      "id": "state-router",
+      "id": "d1a1b1c1-0001-4000-8000-000000000005",
       "name": "Router por Estado",
       "type": "n8n-nodes-base.switch",
-      "typeVersion": 3,
+      "typeVersion": 3.2,
       "position": [1100, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Estado NEW: Enviar bienvenida y pedir identificación\nconst chatId = $json.chatId;\nconst firstName = $json.firstName ?? '';\n\nconst reply = `¡Hola${firstName ? ' ' + firstName : ''} 👋!\\nSoy tu asistente virtual.\\n\\nPara poder ayudarte, por favor envíame tu número de *cédula* o *RUC*.`;\n\nreturn [{\n  json: {\n    chatId,\n    reply,\n    next_state: 'AWAIT_ID',\n    session: {\n      state: 'AWAIT_ID',\n      chatId\n    }\n  }\n}];"
+        "jsCode": "const chatId = $json.chatId;\nconst firstName = $json.firstName ?? '';\n\nconst reply = '¡Hola' + (firstName ? ' ' + firstName : '') + ' 👋!\\nSoy tu asistente virtual.\\n\\nPara poder ayudarte, por favor envíame tu número de *cédula* o *RUC*.';\n\nreturn [{\n  json: {\n    chatId,\n    reply,\n    next_state: 'AWAIT_ID',\n    session: {\n      state: 'AWAIT_ID',\n      chatId\n    }\n  }\n}];"
       },
-      "id": "state-new",
+      "id": "d1a1b1c1-0001-4000-8000-000000000006",
       "name": "Bienvenida",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 80]
+      "position": [1360, 60]
     },
     {
       "parameters": {
-        "jsCode": "// Estado AWAIT_ID: Validar cédula/RUC y consultar WS\nconst chatId = $json.chatId;\nconst text = $json.text;\nconst session = $json.session ?? {};\n\n// Limpiar texto (solo dígitos)\nconst cleaned = text.replace(/\\D/g, '');\n\n// Validar formato: 10 dígitos (cédula) o 13 dígitos (RUC)\nif (cleaned.length !== 10 && cleaned.length !== 13) {\n  return [{\n    json: {\n      chatId,\n      reply: '❌ El número ingresado no parece ser una *cédula* (10 dígitos) ni un *RUC* (13 dígitos).\\n\\nPor favor, inténtalo de nuevo:',\n      next_state: 'AWAIT_ID',\n      session: { ...session, state: 'AWAIT_ID' },\n      skipWS: true\n    }\n  }];\n}\n\n// Si es válido, pasamos al HTTP Request\nreturn [{\n  json: {\n    chatId,\n    identificacion: cleaned,\n    session: { ...session, identificacion: cleaned },\n    skipWS: false\n  }\n}];"
+        "jsCode": "const chatId = $json.chatId;\nconst text = $json.text;\nconst session = $json.session || {};\n\nconst cleaned = text.replace(/\\D/g, '');\n\nif (cleaned.length !== 10 && cleaned.length !== 13) {\n  return [{\n    json: {\n      chatId,\n      reply: '❌ El número ingresado no parece ser una *cédula* (10 dígitos) ni un *RUC* (13 dígitos).\\n\\nPor favor, inténtalo de nuevo:',\n      next_state: 'AWAIT_ID',\n      session: Object.assign({}, session, { state: 'AWAIT_ID' }),\n      skipWS: true\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    chatId,\n    identificacion: cleaned,\n    session: Object.assign({}, session, { identificacion: cleaned }),\n    skipWS: false\n  }\n}];"
       },
-      "id": "validate-id",
-      "name": "Validar Identificación",
+      "id": "d1a1b1c1-0001-4000-8000-000000000007",
+      "name": "Validar Identificacion",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 260]
+      "position": [1360, 240]
     },
     {
       "parameters": {
         "conditions": {
-          "boolean": [
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
             {
-              "value1": "={{ $json.skipWS }}",
-              "value2": true,
-              "operation": "notEqual"
+              "id": "cond-skip",
+              "leftValue": "={{ $json.skipWS }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
             }
-          ]
+          ],
+          "combinator": "and"
         }
       },
-      "id": "check-skip-ws",
-      "name": "¿Consultar WS?",
+      "id": "d1a1b1c1-0001-4000-8000-000000000008",
+      "name": "Consultar WS",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [1580, 260]
+      "typeVersion": 2.2,
+      "position": [1580, 240]
     },
     {
       "parameters": {
         "url": "=https://TU-API.com/api/infoCliente/{{ $json.identificacion }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "options": {
-          "timeout": 10000,
-          "fullResponse": false
+          "timeout": 10000
         }
       },
-      "id": "http-info-cliente",
+      "id": "d1a1b1c1-0001-4000-8000-000000000009",
       "name": "WS infoCliente",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1800, 200],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "HTTP_AUTH_CREDENTIAL_ID",
-          "name": "API Auth"
-        }
-      },
-      "notes": "Ajustar URL y autenticación según tu webservice real."
+      "position": [1800, 180]
     },
     {
       "parameters": {
-        "jsCode": "// Procesar respuesta del WS: filtrar solo puntos ACTIVOS\nconst d = $input.first().json;\nconst chatId = $('Preparar Estado').first().json.chatId;\nconst session = $('Preparar Estado').first().json.session ?? {};\n\nconst puntos = Array.isArray(d.puntos) ? d.puntos : [];\n\n// SOLO ACTIVOS\nconst activos = puntos.filter(p =>\n  String(p?.estado ?? '').trim().toLowerCase() === 'activo'\n);\n\nconst sessionPatch = {\n  ...session,\n  identificacion: d.identificacion ?? d.documento ?? session.identificacion,\n  nombreCliente: d.nombreCliente ?? null,\n  contrato: d.contrato ?? null,\n  puntosActivos: activos.map(p => ({\n    puntoId: p.puntoId,\n    login: p.login,\n    nombrePlan: p.nombrePlan,\n    ciudad: p.ciudad,\n    telefonos: p.telefonos\n  }))\n};\n\nlet next_state = '';\nlet selectedPuntoId = null;\nlet selectedLogin = null;\nlet reply = '';\n\nif (activos.length === 0) {\n  next_state = 'HUMAN';\n  reply =\n    `Hola${d.nombreCliente ? ', ' + d.nombreCliente : ''} 👋\\n` +\n    `No encuentro un servicio *Activo* asociado a tu identificación.\\n` +\n    `¿Deseas que te conecte con un asesor? (Responde: *SI* / *NO*)`;\n} else if (activos.length === 1) {\n  const p = activos[0];\n  next_state = 'MAIN_MENU';\n  selectedPuntoId = p.puntoId;\n  selectedLogin = p.login;\n  reply =\n    `Hola${d.nombreCliente ? ', ' + d.nombreCliente : ''} 👋\\n` +\n    `Tu servicio activo:\\n` +\n    `• ${p.login ?? ''} | ${p.nombrePlan ?? ''} (PuntoId: ${p.puntoId})\\n\\n` +\n    `Elige una opción:\\n` +\n    `1️⃣ Saldo / fecha de pago\\n` +\n    `2️⃣ Reenviar factura\\n` +\n    `3️⃣ Formas de pago / convenios\\n` +\n    `4️⃣ Plan / servicios contratados\\n` +\n    `5️⃣ Hablar con un asesor\\n` +\n    `6️⃣ Cambiar de servicio\\n` +\n    `0️⃣ Salir`;\n} else {\n  next_state = 'AWAIT_PUNTO';\n  reply =\n    `Hola${d.nombreCliente ? ', ' + d.nombreCliente : ''} 👋\\n` +\n    `Tienes *${activos.length}* servicios activos. Elige cuál deseas consultar:\\n\\n` +\n    activos.map((p, i) =>\n      `${i + 1}) ${p.login ?? 'sin_login'} | ${p.nombrePlan ?? 'sin_plan'} | PuntoId ${p.puntoId}`\n    ).join('\\n');\n}\n\nsessionPatch.state = next_state;\nsessionPatch.selectedPuntoId = selectedPuntoId;\nsessionPatch.selectedLogin = selectedLogin;\n\nreturn [{\n  json: {\n    chatId,\n    reply,\n    next_state,\n    selectedPuntoId,\n    selectedLogin,\n    session: sessionPatch\n  }\n}];"
+        "jsCode": "const d = $input.first().json;\nconst prevData = $('Obtener y Preparar Sesion').first().json;\nconst chatId = prevData.chatId;\nconst session = prevData.session || {};\n\nconst puntos = Array.isArray(d.puntos) ? d.puntos : [];\n\nconst activos = puntos.filter(function(p) {\n  return String(p && p.estado ? p.estado : '').trim().toLowerCase() === 'activo';\n});\n\nvar sessionPatch = Object.assign({}, session, {\n  identificacion: d.identificacion || d.documento || session.identificacion,\n  nombreCliente: d.nombreCliente || null,\n  contrato: d.contrato || null,\n  puntosActivos: activos.map(function(p) {\n    return {\n      puntoId: p.puntoId,\n      login: p.login,\n      nombrePlan: p.nombrePlan,\n      ciudad: p.ciudad,\n      telefonos: p.telefonos\n    };\n  })\n});\n\nvar next_state = '';\nvar selectedPuntoId = null;\nvar selectedLogin = null;\nvar reply = '';\nvar nombre = d.nombreCliente ? ', ' + d.nombreCliente : '';\n\nif (activos.length === 0) {\n  next_state = 'HUMAN';\n  reply = 'Hola' + nombre + ' 👋\\n' +\n    'No encuentro un servicio *Activo* asociado a tu identificación.\\n' +\n    '¿Deseas que te conecte con un asesor? (Responde: *SI* / *NO*)';\n} else if (activos.length === 1) {\n  var p = activos[0];\n  next_state = 'MAIN_MENU';\n  selectedPuntoId = p.puntoId;\n  selectedLogin = p.login;\n  reply = 'Hola' + nombre + ' 👋\\n' +\n    'Tu servicio activo:\\n' +\n    '• ' + (p.login || '') + ' | ' + (p.nombrePlan || '') + ' (PuntoId: ' + p.puntoId + ')\\n\\n' +\n    'Elige una opción:\\n' +\n    '1️⃣ Saldo / fecha de pago\\n' +\n    '2️⃣ Reenviar factura\\n' +\n    '3️⃣ Formas de pago / convenios\\n' +\n    '4️⃣ Plan / servicios contratados\\n' +\n    '5️⃣ Hablar con un asesor\\n' +\n    '6️⃣ Cambiar de servicio\\n' +\n    '0️⃣ Salir';\n} else {\n  next_state = 'AWAIT_PUNTO';\n  var lineas = activos.map(function(p, i) {\n    return (i + 1) + ') ' + (p.login || 'sin_login') + ' | ' + (p.nombrePlan || 'sin_plan') + ' | PuntoId ' + p.puntoId;\n  });\n  reply = 'Hola' + nombre + ' 👋\\n' +\n    'Tienes *' + activos.length + '* servicios activos. Elige cuál deseas consultar:\\n\\n' +\n    lineas.join('\\n');\n}\n\nsessionPatch.state = next_state;\nsessionPatch.selectedPuntoId = selectedPuntoId;\nsessionPatch.selectedLogin = selectedLogin;\n\nreturn [{\n  json: {\n    chatId: chatId,\n    reply: reply,\n    next_state: next_state,\n    selectedPuntoId: selectedPuntoId,\n    selectedLogin: selectedLogin,\n    session: sessionPatch\n  }\n}];"
       },
-      "id": "process-ws-response",
+      "id": "d1a1b1c1-0001-4000-8000-000000000010",
       "name": "Filtrar Activos y Decidir",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2020, 200]
+      "position": [2020, 180]
     },
     {
       "parameters": {
-        "jsCode": "// Estado AWAIT_PUNTO: usuario selecciona entre puntos activos\nconst chatId = $json.chatId;\nconst text = $json.text;\nconst session = $json.session ?? {};\nconst activos = Array.isArray(session.puntosActivos) ? session.puntosActivos : [];\n\nconst idx = parseInt(text, 10) - 1;\n\nif (!Number.isInteger(idx) || idx < 0 || idx >= activos.length) {\n  const reply =\n    `Opción inválida. Responde con un número del *1* al *${activos.length}*:\\n\\n` +\n    activos.map((p, i) =>\n      `${i + 1}) ${p.login ?? 'sin_login'} | ${p.nombrePlan ?? 'sin_plan'} | PuntoId ${p.puntoId}`\n    ).join('\\n');\n\n  return [{\n    json: {\n      chatId,\n      reply,\n      next_state: 'AWAIT_PUNTO',\n      session: { ...session, state: 'AWAIT_PUNTO' }\n    }\n  }];\n}\n\nconst chosen = activos[idx];\n\nconst reply =\n  `✅ Servicio seleccionado:\\n` +\n  `• ${chosen.login ?? ''} | ${chosen.nombrePlan ?? ''} (PuntoId: ${chosen.puntoId})\\n\\n` +\n  `Elige una opción:\\n` +\n  `1️⃣ Saldo / fecha de pago\\n` +\n  `2️⃣ Reenviar factura\\n` +\n  `3️⃣ Formas de pago / convenios\\n` +\n  `4️⃣ Plan / servicios contratados\\n` +\n  `5️⃣ Hablar con un asesor\\n` +\n  `6️⃣ Cambiar de servicio\\n` +\n  `0️⃣ Salir`;\n\nreturn [{\n  json: {\n    chatId,\n    reply,\n    next_state: 'MAIN_MENU',\n    selectedPuntoId: chosen.puntoId,\n    selectedLogin: chosen.login,\n    session: {\n      ...session,\n      state: 'MAIN_MENU',\n      selectedPuntoId: chosen.puntoId,\n      selectedLogin: chosen.login\n    }\n  }\n}];"
+        "jsCode": "const chatId = $json.chatId;\nconst text = $json.text;\nconst session = $json.session || {};\nconst activos = Array.isArray(session.puntosActivos) ? session.puntosActivos : [];\n\nconst idx = parseInt(text, 10) - 1;\n\nif (isNaN(idx) || idx < 0 || idx >= activos.length) {\n  var lineas = activos.map(function(p, i) {\n    return (i + 1) + ') ' + (p.login || 'sin_login') + ' | ' + (p.nombrePlan || 'sin_plan') + ' | PuntoId ' + p.puntoId;\n  });\n  return [{\n    json: {\n      chatId: chatId,\n      reply: 'Opción inválida. Responde con un número del *1* al *' + activos.length + '*:\\n\\n' + lineas.join('\\n'),\n      next_state: 'AWAIT_PUNTO',\n      session: Object.assign({}, session, { state: 'AWAIT_PUNTO' })\n    }\n  }];\n}\n\nvar chosen = activos[idx];\n\nreturn [{\n  json: {\n    chatId: chatId,\n    reply: '✅ Servicio seleccionado:\\n' +\n      '• ' + (chosen.login || '') + ' | ' + (chosen.nombrePlan || '') + ' (PuntoId: ' + chosen.puntoId + ')\\n\\n' +\n      'Elige una opción:\\n' +\n      '1️⃣ Saldo / fecha de pago\\n' +\n      '2️⃣ Reenviar factura\\n' +\n      '3️⃣ Formas de pago / convenios\\n' +\n      '4️⃣ Plan / servicios contratados\\n' +\n      '5️⃣ Hablar con un asesor\\n' +\n      '6️⃣ Cambiar de servicio\\n' +\n      '0️⃣ Salir',\n    next_state: 'MAIN_MENU',\n    selectedPuntoId: chosen.puntoId,\n    selectedLogin: chosen.login,\n    session: Object.assign({}, session, {\n      state: 'MAIN_MENU',\n      selectedPuntoId: chosen.puntoId,\n      selectedLogin: chosen.login\n    })\n  }\n}];"
       },
-      "id": "state-await-punto",
+      "id": "d1a1b1c1-0001-4000-8000-000000000011",
       "name": "Seleccionar Punto",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 460]
+      "position": [1360, 440]
     },
     {
       "parameters": {
-        "jsCode": "// Estado MAIN_MENU: interpretar opción del menú\nconst chatId = $json.chatId;\nconst text = $json.text;\nconst session = $json.session ?? {};\nconst option = parseInt(text, 10);\n\nconst menuText =\n  `Elige una opción:\\n` +\n  `1️⃣ Saldo / fecha de pago\\n` +\n  `2️⃣ Reenviar factura\\n` +\n  `3️⃣ Formas de pago / convenios\\n` +\n  `4️⃣ Plan / servicios contratados\\n` +\n  `5️⃣ Hablar con un asesor\\n` +\n  `6️⃣ Cambiar de servicio\\n` +\n  `0️⃣ Salir`;\n\nif (isNaN(option) || option < 0 || option > 6) {\n  return [{\n    json: {\n      chatId,\n      reply: `No entendí tu selección. Por favor responde con un número:\\n\\n${menuText}`,\n      next_state: 'MAIN_MENU',\n      menuOption: -1,\n      session: { ...session, state: 'MAIN_MENU' }\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    chatId,\n    text,\n    menuOption: option,\n    next_state: option === 0 ? 'EXIT' : (option === 5 ? 'HUMAN' : (option === 6 ? 'AWAIT_PUNTO' : 'MAIN_MENU')),\n    session\n  }\n}];"
+        "jsCode": "const chatId = $json.chatId;\nconst text = $json.text;\nconst session = $json.session || {};\nconst option = parseInt(text, 10);\n\nvar menuText = 'Elige una opción:\\n' +\n  '1️⃣ Saldo / fecha de pago\\n' +\n  '2️⃣ Reenviar factura\\n' +\n  '3️⃣ Formas de pago / convenios\\n' +\n  '4️⃣ Plan / servicios contratados\\n' +\n  '5️⃣ Hablar con un asesor\\n' +\n  '6️⃣ Cambiar de servicio\\n' +\n  '0️⃣ Salir';\n\nif (isNaN(option) || option < 0 || option > 6) {\n  return [{\n    json: {\n      chatId: chatId,\n      reply: 'No entendí tu selección. Por favor responde con un número:\\n\\n' + menuText,\n      next_state: 'MAIN_MENU',\n      menuOption: -1,\n      session: Object.assign({}, session, { state: 'MAIN_MENU' })\n    }\n  }];\n}\n\nvar nextSt = 'MAIN_MENU';\nif (option === 0) nextSt = 'EXIT';\nif (option === 5) nextSt = 'HUMAN';\nif (option === 6) nextSt = 'AWAIT_PUNTO';\n\nreturn [{\n  json: {\n    chatId: chatId,\n    text: text,\n    menuOption: option,\n    next_state: nextSt,\n    session: session\n  }\n}];"
       },
-      "id": "state-main-menu",
-      "name": "Interpretar Menú",
+      "id": "d1a1b1c1-0001-4000-8000-000000000012",
+      "name": "Interpretar Menu",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [1360, 640]
@@ -240,142 +291,96 @@
     {
       "parameters": {
         "rules": {
-          "rules": [
+          "values": [
             {
-              "outputKey": "INVALID",
               "conditions": {
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.menuOption }}",
-                    "rightValue": -1,
-                    "operator": {
-                      "type": "number",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              }
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.menuOption }}", "rightValue": -1, "operator": { "type": "number", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "INVALID"
             },
             {
-              "outputKey": "SALDO",
               "conditions": {
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.menuOption }}",
-                    "rightValue": 1,
-                    "operator": {
-                      "type": "number",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              }
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.menuOption }}", "rightValue": 1, "operator": { "type": "number", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "SALDO"
             },
             {
-              "outputKey": "FACTURA",
               "conditions": {
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.menuOption }}",
-                    "rightValue": 2,
-                    "operator": {
-                      "type": "number",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              }
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.menuOption }}", "rightValue": 2, "operator": { "type": "number", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "FACTURA"
             },
             {
-              "outputKey": "FORMAS_PAGO",
               "conditions": {
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.menuOption }}",
-                    "rightValue": 3,
-                    "operator": {
-                      "type": "number",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              }
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.menuOption }}", "rightValue": 3, "operator": { "type": "number", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "FORMAS_PAGO"
             },
             {
-              "outputKey": "PLAN",
               "conditions": {
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.menuOption }}",
-                    "rightValue": 4,
-                    "operator": {
-                      "type": "number",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              }
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.menuOption }}", "rightValue": 4, "operator": { "type": "number", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PLAN"
             },
             {
-              "outputKey": "ASESOR",
               "conditions": {
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.menuOption }}",
-                    "rightValue": 5,
-                    "operator": {
-                      "type": "number",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              }
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.menuOption }}", "rightValue": 5, "operator": { "type": "number", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ASESOR"
             },
             {
-              "outputKey": "CAMBIAR",
               "conditions": {
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.menuOption }}",
-                    "rightValue": 6,
-                    "operator": {
-                      "type": "number",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              }
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.menuOption }}", "rightValue": 6, "operator": { "type": "number", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CAMBIAR"
             },
             {
-              "outputKey": "EXIT",
               "conditions": {
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.menuOption }}",
-                    "rightValue": 0,
-                    "operator": {
-                      "type": "number",
-                      "operation": "equals"
-                    }
-                  }
-                ]
-              }
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [{ "leftValue": "={{ $json.menuOption }}", "rightValue": 0, "operator": { "type": "number", "operation": "equals" } }],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "EXIT"
             }
           ]
         },
-        "options": {}
+        "options": {
+          "fallbackOutput": "extra"
+        }
       },
-      "id": "menu-router",
-      "name": "Router Menú",
+      "id": "d1a1b1c1-0001-4000-8000-000000000013",
+      "name": "Router Menu",
       "type": "n8n-nodes-base.switch",
-      "typeVersion": 3,
+      "typeVersion": 3.2,
       "position": [1580, 640]
     },
     {
       "parameters": {
-        "jsCode": "// Opción 1: Consultar saldo y fecha de pago\nconst chatId = $json.chatId;\nconst session = $json.session ?? {};\n\n// Aquí deberías llamar a tu WS de saldo. Placeholder:\nconst reply =\n  `💳 *Información de saldo*\\n\\n` +\n  `Servicio: ${session.selectedLogin ?? 'N/A'}\\n` +\n  `PuntoId: ${session.selectedPuntoId ?? 'N/A'}\\n\\n` +\n  `_(Aquí se mostrará saldo, fecha máxima de pago, etc. desde tu WS)_\\n\\n` +\n  `Elige otra opción o *0* para salir:\\n` +\n  `1️⃣ Saldo\\n2️⃣ Factura\\n3️⃣ Formas pago\\n4️⃣ Plan\\n5️⃣ Asesor\\n6️⃣ Cambiar\\n0️⃣ Salir`;\n\nreturn [{\n  json: {\n    chatId,\n    reply,\n    next_state: 'MAIN_MENU',\n    session: { ...session, state: 'MAIN_MENU' }\n  }\n}];"
+        "jsCode": "var chatId = $json.chatId;\nvar session = $json.session || {};\n\nvar reply = '💳 *Información de saldo*\\n\\n' +\n  'Servicio: ' + (session.selectedLogin || 'N/A') + '\\n' +\n  'PuntoId: ' + (session.selectedPuntoId || 'N/A') + '\\n\\n' +\n  '_(Aquí se mostrará saldo, fecha máxima de pago, etc. desde tu WS)_\\n\\n' +\n  'Elige otra opción o *0* para salir:\\n' +\n  '1️⃣ Saldo  2️⃣ Factura  3️⃣ Formas pago\\n' +\n  '4️⃣ Plan  5️⃣ Asesor  6️⃣ Cambiar  0️⃣ Salir';\n\nreturn [{ json: { chatId: chatId, reply: reply, next_state: 'MAIN_MENU', session: Object.assign({}, session, { state: 'MAIN_MENU' }) } }];"
       },
-      "id": "subflujo-saldo",
+      "id": "d1a1b1c1-0001-4000-8000-000000000014",
       "name": "Subflujo Saldo",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -383,9 +388,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Opción 2: Reenviar factura\nconst chatId = $json.chatId;\nconst session = $json.session ?? {};\n\nconst reply =\n  `🧾 *Reenvío de factura*\\n\\n` +\n  `Servicio: ${session.selectedLogin ?? 'N/A'}\\n\\n` +\n  `_(Aquí se dispara el reenvío de factura por correo o se envía PDF por Telegram)_\\n\\n` +\n  `Elige otra opción o *0* para salir:\\n` +\n  `1️⃣ Saldo\\n2️⃣ Factura\\n3️⃣ Formas pago\\n4️⃣ Plan\\n5️⃣ Asesor\\n6️⃣ Cambiar\\n0️⃣ Salir`;\n\nreturn [{\n  json: {\n    chatId,\n    reply,\n    next_state: 'MAIN_MENU',\n    session: { ...session, state: 'MAIN_MENU' }\n  }\n}];"
+        "jsCode": "var chatId = $json.chatId;\nvar session = $json.session || {};\n\nvar reply = '🧾 *Reenvío de factura*\\n\\n' +\n  'Servicio: ' + (session.selectedLogin || 'N/A') + '\\n\\n' +\n  '_(Aquí se dispara el reenvío de factura por correo o se envía PDF por Telegram)_\\n\\n' +\n  'Elige otra opción o *0* para salir:\\n' +\n  '1️⃣ Saldo  2️⃣ Factura  3️⃣ Formas pago\\n' +\n  '4️⃣ Plan  5️⃣ Asesor  6️⃣ Cambiar  0️⃣ Salir';\n\nreturn [{ json: { chatId: chatId, reply: reply, next_state: 'MAIN_MENU', session: Object.assign({}, session, { state: 'MAIN_MENU' }) } }];"
       },
-      "id": "subflujo-factura",
+      "id": "d1a1b1c1-0001-4000-8000-000000000015",
       "name": "Subflujo Factura",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -393,9 +398,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Opción 3: Formas de pago / convenios\nconst chatId = $json.chatId;\nconst session = $json.session ?? {};\n\nconst reply =\n  `🤝 *Formas de pago y convenios*\\n\\n` +\n  `Puedes realizar tus pagos en:\\n` +\n  `• Transferencia bancaria\\n` +\n  `• Débito automático\\n` +\n  `• Puntos de recaudación\\n` +\n  `• Pago en línea\\n\\n` +\n  `_(Personaliza con tus canales de pago reales)_\\n\\n` +\n  `Elige otra opción o *0* para salir:\\n` +\n  `1️⃣ Saldo\\n2️⃣ Factura\\n3️⃣ Formas pago\\n4️⃣ Plan\\n5️⃣ Asesor\\n6️⃣ Cambiar\\n0️⃣ Salir`;\n\nreturn [{\n  json: {\n    chatId,\n    reply,\n    next_state: 'MAIN_MENU',\n    session: { ...session, state: 'MAIN_MENU' }\n  }\n}];"
+        "jsCode": "var chatId = $json.chatId;\nvar session = $json.session || {};\n\nvar reply = '🤝 *Formas de pago y convenios*\\n\\n' +\n  'Puedes realizar tus pagos en:\\n' +\n  '• Transferencia bancaria\\n' +\n  '• Débito automático\\n' +\n  '• Puntos de recaudación\\n' +\n  '• Pago en línea\\n\\n' +\n  '_(Personaliza con tus canales de pago reales)_\\n\\n' +\n  'Elige otra opción o *0* para salir:\\n' +\n  '1️⃣ Saldo  2️⃣ Factura  3️⃣ Formas pago\\n' +\n  '4️⃣ Plan  5️⃣ Asesor  6️⃣ Cambiar  0️⃣ Salir';\n\nreturn [{ json: { chatId: chatId, reply: reply, next_state: 'MAIN_MENU', session: Object.assign({}, session, { state: 'MAIN_MENU' }) } }];"
       },
-      "id": "subflujo-pagos",
+      "id": "d1a1b1c1-0001-4000-8000-000000000016",
       "name": "Subflujo Formas Pago",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -403,9 +408,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Opción 4: Plan / servicios contratados\nconst chatId = $json.chatId;\nconst session = $json.session ?? {};\nconst activos = session.puntosActivos ?? [];\nconst selected = activos.find(p => p.puntoId === session.selectedPuntoId);\n\nconst reply =\n  `📦 *Plan y servicios contratados*\\n\\n` +\n  `Servicio: ${session.selectedLogin ?? 'N/A'}\\n` +\n  `Plan: ${selected?.nombrePlan ?? 'N/A'}\\n` +\n  `Ciudad: ${selected?.ciudad ?? 'N/A'}\\n\\n` +\n  `_(Aquí puedes agregar velocidad, productos adicionales, etc. desde tu WS)_\\n\\n` +\n  `Elige otra opción o *0* para salir:\\n` +\n  `1️⃣ Saldo\\n2️⃣ Factura\\n3️⃣ Formas pago\\n4️⃣ Plan\\n5️⃣ Asesor\\n6️⃣ Cambiar\\n0️⃣ Salir`;\n\nreturn [{\n  json: {\n    chatId,\n    reply,\n    next_state: 'MAIN_MENU',\n    session: { ...session, state: 'MAIN_MENU' }\n  }\n}];"
+        "jsCode": "var chatId = $json.chatId;\nvar session = $json.session || {};\nvar activos = session.puntosActivos || [];\nvar selected = null;\nfor (var i = 0; i < activos.length; i++) {\n  if (activos[i].puntoId === session.selectedPuntoId) { selected = activos[i]; break; }\n}\n\nvar reply = '📦 *Plan y servicios contratados*\\n\\n' +\n  'Servicio: ' + (session.selectedLogin || 'N/A') + '\\n' +\n  'Plan: ' + (selected ? selected.nombrePlan || 'N/A' : 'N/A') + '\\n' +\n  'Ciudad: ' + (selected ? selected.ciudad || 'N/A' : 'N/A') + '\\n\\n' +\n  '_(Aquí puedes agregar velocidad, productos adicionales, etc.)_\\n\\n' +\n  'Elige otra opción o *0* para salir:\\n' +\n  '1️⃣ Saldo  2️⃣ Factura  3️⃣ Formas pago\\n' +\n  '4️⃣ Plan  5️⃣ Asesor  6️⃣ Cambiar  0️⃣ Salir';\n\nreturn [{ json: { chatId: chatId, reply: reply, next_state: 'MAIN_MENU', session: Object.assign({}, session, { state: 'MAIN_MENU' }) } }];"
       },
-      "id": "subflujo-plan",
+      "id": "d1a1b1c1-0001-4000-8000-000000000017",
       "name": "Subflujo Plan",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -413,9 +418,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Opción 5: Hablar con un asesor (handoff humano)\nconst chatId = $json.chatId;\nconst session = $json.session ?? {};\n\nconst reply =\n  `🧑‍💻 *Conexión con asesor*\\n\\n` +\n  `Te voy a conectar con un asesor humano. Por favor espera un momento...\\n\\n` +\n  `_(Aquí se dispara la integración con Chatwoot, CRM, o notificación al equipo de soporte)_`;\n\nreturn [{\n  json: {\n    chatId,\n    reply,\n    next_state: 'HUMAN',\n    session: { ...session, state: 'HUMAN' }\n  }\n}];"
+        "jsCode": "var chatId = $json.chatId;\nvar session = $json.session || {};\n\nvar reply = '🧑‍💻 *Conexión con asesor*\\n\\n' +\n  'Te voy a conectar con un asesor humano. Por favor espera un momento...\\n\\n' +\n  '_(Aquí se dispara la integración con Chatwoot, CRM, o notificación al equipo de soporte)_';\n\nreturn [{ json: { chatId: chatId, reply: reply, next_state: 'HUMAN', session: Object.assign({}, session, { state: 'HUMAN' }) } }];"
       },
-      "id": "subflujo-asesor",
+      "id": "d1a1b1c1-0001-4000-8000-000000000018",
       "name": "Subflujo Asesor",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -423,9 +428,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Opción 6: Cambiar de servicio -> vuelve a mostrar puntos activos\nconst chatId = $json.chatId;\nconst session = $json.session ?? {};\nconst activos = session.puntosActivos ?? [];\n\nlet reply, next_state;\n\nif (activos.length <= 1) {\n  reply = `Solo tienes un servicio activo. No es posible cambiar.\\n\\n` +\n    `Elige una opción:\\n` +\n    `1️⃣ Saldo\\n2️⃣ Factura\\n3️⃣ Formas pago\\n4️⃣ Plan\\n5️⃣ Asesor\\n0️⃣ Salir`;\n  next_state = 'MAIN_MENU';\n} else {\n  reply =\n    `Tienes *${activos.length}* servicios activos. Elige cuál consultar:\\n\\n` +\n    activos.map((p, i) =>\n      `${i + 1}) ${p.login ?? 'sin_login'} | ${p.nombrePlan ?? 'sin_plan'} | PuntoId ${p.puntoId}`\n    ).join('\\n');\n  next_state = 'AWAIT_PUNTO';\n}\n\nreturn [{\n  json: {\n    chatId,\n    reply,\n    next_state,\n    session: { ...session, state: next_state }\n  }\n}];"
+        "jsCode": "var chatId = $json.chatId;\nvar session = $json.session || {};\nvar activos = session.puntosActivos || [];\n\nvar reply, next_state;\n\nif (activos.length <= 1) {\n  reply = 'Solo tienes un servicio activo. No es posible cambiar.\\n\\n' +\n    'Elige una opción:\\n' +\n    '1️⃣ Saldo  2️⃣ Factura  3️⃣ Formas pago\\n' +\n    '4️⃣ Plan  5️⃣ Asesor  0️⃣ Salir';\n  next_state = 'MAIN_MENU';\n} else {\n  var lineas = activos.map(function(p, i) {\n    return (i + 1) + ') ' + (p.login || 'sin_login') + ' | ' + (p.nombrePlan || 'sin_plan') + ' | PuntoId ' + p.puntoId;\n  });\n  reply = 'Tienes *' + activos.length + '* servicios activos. Elige cuál consultar:\\n\\n' + lineas.join('\\n');\n  next_state = 'AWAIT_PUNTO';\n}\n\nreturn [{ json: { chatId: chatId, reply: reply, next_state: next_state, session: Object.assign({}, session, { state: next_state }) } }];"
       },
-      "id": "subflujo-cambiar",
+      "id": "d1a1b1c1-0001-4000-8000-000000000019",
       "name": "Subflujo Cambiar Servicio",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -433,9 +438,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Opción 0: Salir / limpiar sesión\nconst chatId = $json.chatId;\n\nconst reply = `¡Gracias por usar nuestro servicio! 👋\\nSi necesitas algo más, envía /start para comenzar de nuevo.`;\n\nreturn [{\n  json: {\n    chatId,\n    reply,\n    next_state: 'EXIT',\n    session: { state: 'NEW', chatId }\n  }\n}];"
+        "jsCode": "var chatId = $json.chatId;\n\nvar reply = '¡Gracias por usar nuestro servicio! 👋\\nSi necesitas algo más, envía /start para comenzar de nuevo.';\n\nreturn [{ json: { chatId: chatId, reply: reply, next_state: 'EXIT', session: { state: 'NEW', chatId: chatId } } }];"
       },
-      "id": "subflujo-exit",
+      "id": "d1a1b1c1-0001-4000-8000-000000000020",
       "name": "Subflujo Salir",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -443,9 +448,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Estado HUMAN: bot en pausa, esperando asesor o respuesta SI/NO\nconst chatId = $json.chatId;\nconst text = ($json.text ?? '').trim().toUpperCase();\nconst session = $json.session ?? {};\n\nif (text === 'NO' || text === '/start') {\n  return [{\n    json: {\n      chatId,\n      reply: 'Entendido. Si necesitas algo más, envía /start.',\n      next_state: 'NEW',\n      session: { state: 'NEW', chatId }\n    }\n  }];\n}\n\nif (text === 'SI' || text === 'SÍ') {\n  return [{\n    json: {\n      chatId,\n      reply: '🧑‍💻 Te estamos conectando con un asesor. Por favor espera...',\n      next_state: 'HUMAN',\n      session: { ...session, state: 'HUMAN' }\n    }\n  }];\n}\n\n// Cualquier otro mensaje en estado HUMAN\nreturn [{\n  json: {\n    chatId,\n    reply: 'Un asesor te atenderá pronto. Si deseas reiniciar, envía /start.',\n    next_state: 'HUMAN',\n    session: { ...session, state: 'HUMAN' }\n  }\n}];"
+        "jsCode": "var chatId = $json.chatId;\nvar text = ($json.text || '').trim().toUpperCase();\nvar session = $json.session || {};\n\nif (text === 'NO' || text === '/START') {\n  return [{ json: { chatId: chatId, reply: 'Entendido. Si necesitas algo más, envía /start.', next_state: 'NEW', session: { state: 'NEW', chatId: chatId } } }];\n}\n\nif (text === 'SI' || text === 'SÍ') {\n  return [{ json: { chatId: chatId, reply: '🧑‍💻 Te estamos conectando con un asesor. Por favor espera...', next_state: 'HUMAN', session: Object.assign({}, session, { state: 'HUMAN' }) } }];\n}\n\nreturn [{ json: { chatId: chatId, reply: 'Un asesor te atenderá pronto. Si deseas reiniciar, envía /start.', next_state: 'HUMAN', session: Object.assign({}, session, { state: 'HUMAN' }) } }];"
       },
-      "id": "state-human",
+      "id": "d1a1b1c1-0001-4000-8000-000000000021",
       "name": "Estado Humano",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -459,38 +464,21 @@
           "parse_mode": "Markdown"
         }
       },
-      "id": "send-telegram",
+      "id": "d1a1b1c1-0001-4000-8000-000000000022",
       "name": "Enviar Respuesta Telegram",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [2280, 500],
-      "credentials": {
-        "telegramApi": {
-          "id": "TELEGRAM_CREDENTIAL_ID",
-          "name": "Telegram Bot API"
-        }
-      }
+      "position": [2280, 500]
     },
     {
       "parameters": {
-        "operation": "set",
-        "key": "={{ 'session_' + $json.chatId }}",
-        "value": "={{ JSON.stringify($json.session) }}",
-        "expire": true,
-        "ttl": 1800
+        "jsCode": "// Guardar sesion en Static Data del workflow\n// REEMPLAZAR con Redis/DB si prefieres persistencia externa\nvar staticData = $getWorkflowStaticData('global');\nvar chatId = $json.chatId;\nvar session = $json.session || {};\nvar sessionKey = 'session_' + chatId;\n\nstaticData[sessionKey] = JSON.stringify(session);\n\nreturn [{ json: { success: true, chatId: chatId, state: session.state } }];"
       },
-      "id": "save-session",
-      "name": "Guardar Sesión",
-      "type": "n8n-nodes-base.redis",
-      "typeVersion": 1,
-      "position": [2500, 500],
-      "credentials": {
-        "redis": {
-          "id": "REDIS_CREDENTIAL_ID",
-          "name": "Redis"
-        }
-      },
-      "notes": "TTL de 30 minutos. Ajustar según necesidad."
+      "id": "d1a1b1c1-0001-4000-8000-000000000023",
+      "name": "Guardar Sesion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2500, 500]
     }
   ],
   "connections": {
@@ -501,15 +489,15 @@
     },
     "Parsear Mensaje": {
       "main": [
-        [{ "node": "Obtener Sesión", "type": "main", "index": 0 }]
+        [{ "node": "Set Datos Mensaje", "type": "main", "index": 0 }]
       ]
     },
-    "Obtener Sesión": {
+    "Set Datos Mensaje": {
       "main": [
-        [{ "node": "Preparar Estado", "type": "main", "index": 0 }]
+        [{ "node": "Obtener y Preparar Sesion", "type": "main", "index": 0 }]
       ]
     },
-    "Preparar Estado": {
+    "Obtener y Preparar Sesion": {
       "main": [
         [{ "node": "Router por Estado", "type": "main", "index": 0 }]
       ]
@@ -517,10 +505,11 @@
     "Router por Estado": {
       "main": [
         [{ "node": "Bienvenida", "type": "main", "index": 0 }],
-        [{ "node": "Validar Identificación", "type": "main", "index": 0 }],
+        [{ "node": "Validar Identificacion", "type": "main", "index": 0 }],
         [{ "node": "Seleccionar Punto", "type": "main", "index": 0 }],
-        [{ "node": "Interpretar Menú", "type": "main", "index": 0 }],
-        [{ "node": "Estado Humano", "type": "main", "index": 0 }]
+        [{ "node": "Interpretar Menu", "type": "main", "index": 0 }],
+        [{ "node": "Estado Humano", "type": "main", "index": 0 }],
+        [{ "node": "Bienvenida", "type": "main", "index": 0 }]
       ]
     },
     "Bienvenida": {
@@ -528,12 +517,12 @@
         [{ "node": "Enviar Respuesta Telegram", "type": "main", "index": 0 }]
       ]
     },
-    "Validar Identificación": {
+    "Validar Identificacion": {
       "main": [
-        [{ "node": "¿Consultar WS?", "type": "main", "index": 0 }]
+        [{ "node": "Consultar WS", "type": "main", "index": 0 }]
       ]
     },
-    "¿Consultar WS?": {
+    "Consultar WS": {
       "main": [
         [{ "node": "WS infoCliente", "type": "main", "index": 0 }],
         [{ "node": "Enviar Respuesta Telegram", "type": "main", "index": 0 }]
@@ -554,12 +543,12 @@
         [{ "node": "Enviar Respuesta Telegram", "type": "main", "index": 0 }]
       ]
     },
-    "Interpretar Menú": {
+    "Interpretar Menu": {
       "main": [
-        [{ "node": "Router Menú", "type": "main", "index": 0 }]
+        [{ "node": "Router Menu", "type": "main", "index": 0 }]
       ]
     },
-    "Router Menú": {
+    "Router Menu": {
       "main": [
         [{ "node": "Enviar Respuesta Telegram", "type": "main", "index": 0 }],
         [{ "node": "Subflujo Saldo", "type": "main", "index": 0 }],
@@ -568,7 +557,8 @@
         [{ "node": "Subflujo Plan", "type": "main", "index": 0 }],
         [{ "node": "Subflujo Asesor", "type": "main", "index": 0 }],
         [{ "node": "Subflujo Cambiar Servicio", "type": "main", "index": 0 }],
-        [{ "node": "Subflujo Salir", "type": "main", "index": 0 }]
+        [{ "node": "Subflujo Salir", "type": "main", "index": 0 }],
+        [{ "node": "Enviar Respuesta Telegram", "type": "main", "index": 0 }]
       ]
     },
     "Subflujo Saldo": {
@@ -613,17 +603,15 @@
     },
     "Enviar Respuesta Telegram": {
       "main": [
-        [{ "node": "Guardar Sesión", "type": "main", "index": 0 }]
+        [{ "node": "Guardar Sesion", "type": "main", "index": 0 }]
       ]
     }
   },
   "settings": {
     "executionOrder": "v1"
   },
-  "staticData": null,
-  "tags": [
-    { "name": "telegram" },
-    { "name": "bot" },
-    { "name": "cobranzas" }
-  ]
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
 }
